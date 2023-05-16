@@ -1,4 +1,3 @@
-require 'net/http'
 require 'rack'
 require 'moesif_api'
 require 'json'
@@ -6,9 +5,7 @@ require 'base64'
 require_relative '../../lib/moesif_rack/app_config.rb'
 
 module MoesifCaptureOutgoing
-
   class << self
-
     def start_capture_outgoing(options)
       @moesif_options = options
       if not @moesif_options['application_id']
@@ -42,8 +39,8 @@ module MoesifCaptureOutgoing
       end
     end
 
-    def call (url, request, request_time, response, response_time)
-      send_moesif_event(url, request, request_time, response, response_time)
+    def call adapter
+      send_moesif_event adapter
     end
     
     def get_response_body(response)
@@ -52,73 +49,20 @@ module MoesifCaptureOutgoing
       body.to_s
     end
 
-    def transform_response_code(response_code_name)
-      Rack::Utils::HTTP_STATUS_CODES.detect { |_k, v| v.to_s.casecmp(response_code_name.to_s).zero? }.first
-    end
+    def send_moesif_event adapter
+      if adapter.moesif_event?
+        puts 'Skip sending as it is moesif Event' if @debug
+        return
+      end
 
-    def send_moesif_event(url, request, request_time, response, response_time)
-
-      if url.downcase.include? "moesif"
-        if @debug
-          puts "Skip sending as it is moesif Event"
-        end
-      else 
-        response.code = transform_response_code(response.code) if response.code.is_a?(Symbol)
-
-        # Request Body
-        req_body_string = request.body.nil? || request.body.empty? ? nil : request.body
-        req_body_transfer_encoding = nil
-        req_body = nil
-
-        if @log_body_outgoing
-          if req_body_string && req_body_string.length != 0
-            begin
-              req_body = JSON.parse(req_body_string)
-            rescue
-              req_body = Base64.encode64(req_body_string)
-              req_body_transfer_encoding = 'base64'
-            end
-          end
-        end
-
-        # Response Body and encoding
-        rsp_body_string = get_response_body(response.body)
-        rsp_body_transfer_encoding = nil
-        rsp_body = nil
-
-        if @log_body_outgoing
-          if rsp_body_string && rsp_body_string.length != 0
-            begin
-              rsp_body = JSON.parse(rsp_body_string)
-            rescue
-              rsp_body = Base64.encode64(rsp_body_string)
-              rsp_body_transfer_encoding = 'base64'
-            end
-          end
-        end
-
-        # Event Request
-        event_req = MoesifApi::EventRequestModel.new()
-        event_req.time = request_time
-        event_req.uri = url
-        event_req.verb = request.method.to_s.upcase
-        event_req.headers = request.each_header.collect.to_h
-        event_req.api_version = nil
-        event_req.body = req_body
-        event_req.transfer_encoding = req_body_transfer_encoding
-
-        # Event Response 
-        event_rsp = MoesifApi::EventResponseModel.new()
-        event_rsp.time = response_time
-        event_rsp.status = response.code.to_i
-        event_rsp.headers = response.each_header.collect.to_h
-        event_rsp.body = rsp_body
-        event_rsp.transfer_encoding = rsp_body_transfer_encoding
+      if true
+        request_model = adapter.request.to_event_request_model log_body: @log_body_outgoing
+        response_model = adapter.response.to_event_response_model log_body: @log_body_outgoing
 
         # Prepare Event Model
-        event_model = MoesifApi::EventModel.new()
-        event_model.request = event_req
-        event_model.response = event_rsp
+        event_model = MoesifApi::EventModel.new
+        event_model.request = request_model
+        event_model.response = response_model
         event_model.direction = "Outgoing"
 
         # Metadata for Outgoing Request
@@ -126,7 +70,7 @@ module MoesifCaptureOutgoing
           if @debug
             puts "calling get_metadata_outgoing proc"
           end
-          event_model.metadata = @get_metadata_outgoing.call(request, response)
+          event_model.metadata = @get_metadata_outgoing.call(adapter.base_request, adapter.base_response)
         end
 
         # Identify User
@@ -134,7 +78,7 @@ module MoesifCaptureOutgoing
           if @debug
             puts "calling identify_user_outgoing proc"
           end
-          event_model.user_id = @identify_user_outgoing.call(request, response)
+          event_model.user_id = @identify_user_outgoing.call(adapter.base_request, adapter.base_response)
         end
 
         # Identify Company
@@ -142,7 +86,7 @@ module MoesifCaptureOutgoing
           if @debug
             puts "calling identify_company_outgoing proc"
           end
-          event_model.company_id = @identify_company_outgoing.call(request, response)
+          event_model.company_id = @identify_company_outgoing.call(adapter.base_request, adapter.base_response)
         end
 
         # Session Token
@@ -150,14 +94,14 @@ module MoesifCaptureOutgoing
           if @debug
             puts "calling identify_session_outgoing proc"
           end
-          event_model.session_token = @identify_session_outgoing.call(request, response)
+          event_model.session_token = @identify_session_outgoing.call(adapter.base_request, adapter.base_response)
         end
 
         # Skip Outgoing Request
         should_skip = false
 
         if @skip_outgoing
-          if @skip_outgoing.call(request, response)
+          if @skip_outgoing.call(adapter.base_request, adapter.base_response)
             should_skip = true;
           end
         end
