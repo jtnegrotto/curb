@@ -3,6 +3,7 @@ require 'rack'
 require 'net/http'
 require_relative '../lib/moesif_rack/app_config.rb'
 require_relative '../lib/moesif_rack'
+require_relative '../lib/moesif_rack/curb'
 
 class MoesifRackTest < Test::Unit::TestCase
   def setup
@@ -55,6 +56,19 @@ class MoesifRackTest < Test::Unit::TestCase
     res = Net::HTTP.start(url.host, url.port, :use_ssl => url.scheme == 'https') {|http|
       http.request(req)
     }
+    assert_not_equal res, nil
+  end
+
+  def test_curl_easy_capture_outgoing
+    req = Curl::Easy.new('https://api.github.com')
+    res = req.perform
+    assert_not_equal res, nil
+  end
+
+  def test_curl_easy_capture_outgoing_with_body
+    req = Curl::Easy.new('https://api.github.com')
+    req.post_body = 'test'
+    res = req.http_post
     assert_not_equal res, nil
   end
 

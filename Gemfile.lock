@@ -9,6 +9,7 @@ GEM
   specs:
     addressable (2.8.0)
       public_suffix (>= 2.0.2, < 5.0)
+    curb (1.0.5)
     domain_name (0.5.20190701)
       unf (>= 0.0.5, < 1.0.0)
     http-accept (1.7.0)
@@ -48,6 +49,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
+  curb
   moesif_api
   moesif_rack!
   rake

@@ -3,6 +3,7 @@
 gem 'moesif_api'
 group :test do
   gem 'rake'
+  gem 'curb'
 end
 
 gemspec
